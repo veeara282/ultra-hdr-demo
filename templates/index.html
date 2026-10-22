@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ultra HDR Gain Map Viewer</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 1200px; padding: 16px; }
+  #drop { border: 2px dashed #888; border-radius: 8px; padding: 24px; text-align: center; }
+  #drop.over { background: #eef; }
+  #results { display: none; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
+  figure { margin: 0; }
+  img { max-width: 100%; display: block; }
+  figcaption { margin-top: 4px; font-size: 14px; }
+  .bar { height: 12px; background: linear-gradient(to right, #000, #fff); margin-top: 8px; }
+  .scale { display: flex; justify-content: space-between; font-size: 12px; }
+  #error { color: #b00020; margin-top: 12px; }
+  pre { background: #f4f4f4; padding: 8px; overflow-x: auto; }
+  @media (max-width: 700px) { #results { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>Ultra HDR Gain Map Viewer</h1>
+<div id="drop">
+  <p>Drop an Ultra HDR JPEG here, or choose a file.</p>
+  <input type="file" id="file" accept="image/jpeg">
+  <button id="clear" type="button" hidden>Clear</button>
+</div>
+<div id="error"></div>
+<div id="results">
+  <figure>
+    <img id="orig" alt="Original image">
+    <figcaption>Original (SDR base image)</figcaption>
+  </figure>
+  <figure>
+    <img id="gain" alt="Gain map">
+    <div class="bar"></div>
+    <div class="scale"><span id="lo"></span><span>log2 gain (stops)</span><span id="hi"></span></div>
+    <figcaption id="gaincap">Gain map</figcaption>
+  </figure>
+</div>
+<h2 id="metahead" hidden>Gain map XMP packet</h2>
+<p id="metanote" hidden>The XMP packet is XML; the values below were parsed out of it and converted to JSON.</p>
+<pre id="meta" hidden></pre>
+<script>
+const $ = id => document.getElementById(id);
+const drop = $("drop");
+
+async function handle(file) {
+  $("error").textContent = "";
+  const fd = new FormData();
+  fd.append("image", file);
+  const res = await fetch("/upload", { method: "POST", body: fd });
+  const data = await res.json();
+  if (!res.ok) {
+    $("results").style.display = "none";
+    setMetaVisible(false);
+    $("error").textContent = data.error;
+    return;
+  }
+  $("orig").src = URL.createObjectURL(file);
+  $("gain").src = data.gain_map;
+  $("lo").textContent = data.log2_min.toFixed(2);
+  $("hi").textContent = data.log2_max.toFixed(2);
+  $("gaincap").textContent = `Gain map (${data.gain_map_size.join("×")})`;
+  $("meta").textContent = JSON.stringify(data.meta, null, 2);
+  setMetaVisible(true);
+  $("results").style.display = "grid";
+  $("clear").hidden = false;
+}
+
+function setMetaVisible(v) {
+  for (const id of ["metahead", "metanote", "meta"]) $(id).hidden = !v;
+}
+
+function clearAll() {
+  URL.revokeObjectURL($("orig").src);
+  $("file").value = "";
+  $("orig").removeAttribute("src");
+  $("gain").removeAttribute("src");
+  $("error").textContent = "";
+  $("results").style.display = "none";
+  setMetaVisible(false);
+  $("clear").hidden = true;
+}
+$("clear").addEventListener("click", clearAll);
+
+$("file").addEventListener("change", e => e.target.files[0] && handle(e.target.files[0]));
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => {
+  e.preventDefault();
+  drop.classList.remove("over");
+  if (e.dataTransfer.files[0]) handle(e.dataTransfer.files[0]);
+});
+</script>
+</body>
+</html>
