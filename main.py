@@ -59,15 +59,25 @@ def log2_range(meta: dict):
     return float(lo), float(hi)
 
 
-def actual_log2_range(gm_bytes: bytes, meta: dict):
-    """Lowest and highest log2 gain (stops) that actually occur in the gain map pixels."""
+def decode_log2_gain(gm_bytes: bytes, meta: dict) -> np.ndarray:
+    """Per-pixel log2 gain (stops) from the gain map JPEG."""
     gain = np.asarray(Image.open(io.BytesIO(gm_bytes)))
     gmin = np.asarray(meta.get("GainMapMin", 0.0), dtype=np.float32)
     gmax = np.asarray(meta["GainMapMax"], dtype=np.float32)
     gamma = np.asarray(meta.get("Gamma", 1.0), dtype=np.float32)
     g = gain.astype(np.float32) / 255.0
-    log2_gain = gmin + (gmax - gmin) * g ** (1.0 / gamma)
-    return float(log2_gain.min()), float(log2_gain.max())
+    return gmin + (gmax - gmin) * g ** (1.0 / gamma)  # broadcasts if params are per-channel
+
+
+def render_scaled(log2_gain: np.ndarray, lo: float, hi: float) -> str:
+    """PNG data URL with the image's own min..max stretched to 0..255; a constant map is neutral gray."""
+    if hi > lo:
+        arr = ((log2_gain - lo) / (hi - lo) * 255).round().astype(np.uint8)
+    else:
+        arr = np.full(log2_gain.shape, 127, dtype=np.uint8)
+    buf = io.BytesIO()
+    Image.fromarray(arr).save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 @app.get("/")
@@ -87,7 +97,8 @@ def upload():
         if "GainMapMax" not in meta:
             raise ValueError("Gain map is missing hdrgm:GainMapMax metadata.")
         lo, hi = log2_range(meta)
-        actual_lo, actual_hi = actual_log2_range(gm_bytes, meta)
+        log2_gain = decode_log2_gain(gm_bytes, meta)
+        actual_lo, actual_hi = float(log2_gain.min()), float(log2_gain.max())
         width, height = Image.open(io.BytesIO(gm_bytes)).size
     except Exception as e:
         return jsonify(error=str(e)), 422
@@ -95,6 +106,7 @@ def upload():
         gain_map="data:image/jpeg;base64," + base64.b64encode(gm_bytes).decode(),
         log2_min=lo,
         log2_max=hi,
+        gain_map_scaled=render_scaled(log2_gain, actual_lo, actual_hi),
         actual_min=actual_lo,
         actual_max=actual_hi,
         gain_map_size=[width, height],

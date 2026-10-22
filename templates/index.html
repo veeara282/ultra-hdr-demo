@@ -36,9 +36,9 @@
   <figure>
     <img id="gain" alt="Gain map">
     <div class="bar"></div>
-    <div class="scale"><span id="lo"></span><span>log2 gain (stops), GainMapMin–GainMapMax</span><span id="hi"></span></div>
+    <div class="scale"><span id="lo"></span><span id="scalelabel"></span><span id="hi"></span></div>
     <div id="actual"></div>
-    <figcaption id="gaincap">Gain map</figcaption>
+    <figcaption><span id="gaincap">Gain map</span> <button id="toggle" type="button">Scale to image range</button></figcaption>
   </figure>
 </div>
 <h2 id="metahead" hidden>Gain map XMP packet</h2>
@@ -61,9 +61,9 @@ async function handle(file) {
     return;
   }
   $("orig").src = URL.createObjectURL(file);
-  $("gain").src = data.gain_map;
-  $("lo").textContent = data.log2_min.toFixed(2);
-  $("hi").textContent = data.log2_max.toFixed(2);
+  current = data;
+  scaled = false;
+  showGain();
   $("actual").textContent = `Actual gain in this image: min ${data.actual_min.toFixed(2)}, max ${data.actual_max.toFixed(2)} stops`;
   $("gaincap").textContent = `Gain map (${data.gain_map_size.join("×")})`;
   $("meta").textContent = JSON.stringify(data.meta, null, 2);
@@ -71,6 +71,23 @@ async function handle(file) {
   $("results").style.display = "grid";
   $("clear").hidden = false;
 }
+
+let current = null;
+let scaled = false;
+
+function showGain() {
+  const d = current;
+  const [src, lo, hi, label, btn] = scaled
+    ? [d.gain_map_scaled, d.actual_min, d.actual_max, "log2 gain (stops), image min–max", "Show GainMapMin–GainMapMax"]
+    : [d.gain_map, d.log2_min, d.log2_max, "log2 gain (stops), GainMapMin–GainMapMax", "Scale to image range"];
+  $("gain").src = src;
+  $("lo").textContent = lo.toFixed(2);
+  $("hi").textContent = hi.toFixed(2);
+  $("scalelabel").textContent = label;
+  $("toggle").textContent = btn;
+}
+
+$("toggle").addEventListener("click", () => { scaled = !scaled; showGain(); });
 
 function setMetaVisible(v) {
   for (const id of ["metahead", "metanote", "meta"]) $(id).hidden = !v;
@@ -85,6 +102,7 @@ function clearAll() {
   $("results").style.display = "none";
   setMetaVisible(false);
   $("clear").hidden = true;
+  current = null;
 }
 $("clear").addEventListener("click", clearAll);
 
