@@ -14,6 +14,7 @@
   figcaption { margin-top: 4px; font-size: 14px; }
   .bar { height: 12px; background: linear-gradient(to right, #000, #fff); margin-top: 8px; }
   .scale { display: flex; justify-content: space-between; font-size: 12px; }
+  #actual { font-size: 13px; margin-top: 4px; }
   #error { color: #b00020; margin-top: 12px; }
   pre { background: #f4f4f4; padding: 8px; overflow-x: auto; }
   @media (max-width: 700px) { #results { grid-template-columns: 1fr; } }
@@ -35,7 +36,8 @@
   <figure>
     <img id="gain" alt="Gain map">
     <div class="bar"></div>
-    <div class="scale"><span id="lo"></span><span>log2 gain (stops)</span><span id="hi"></span></div>
+    <div class="scale"><span id="lo"></span><span>log2 gain (stops), GainMapMin–GainMapMax</span><span id="hi"></span></div>
+    <div id="actual"></div>
     <figcaption id="gaincap">Gain map</figcaption>
   </figure>
 </div>
@@ -62,6 +64,7 @@ async function handle(file) {
   $("gain").src = data.gain_map;
   $("lo").textContent = data.log2_min.toFixed(2);
   $("hi").textContent = data.log2_max.toFixed(2);
+  $("actual").textContent = `Actual gain in this image: min ${data.actual_min.toFixed(2)}, max ${data.actual_max.toFixed(2)} stops`;
   $("gaincap").textContent = `Gain map (${data.gain_map_size.join("×")})`;
   $("meta").textContent = JSON.stringify(data.meta, null, 2);
   setMetaVisible(true);

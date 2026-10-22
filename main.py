@@ -52,25 +52,22 @@ def read_hdrgm_metadata(gm_bytes: bytes) -> dict:
     return meta
 
 
-def png_data_url(arr: np.ndarray) -> str:
-    buf = io.BytesIO()
-    Image.fromarray(arr).save(buf, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+def log2_range(meta: dict):
+    """Declared log2 gain range (stops) for pixel values 0..255; per-channel values collapse to the extremes."""
+    lo = np.min(meta.get("GainMapMin", 0.0))
+    hi = np.max(meta["GainMapMax"])
+    return float(lo), float(hi)
 
 
-def render_log2_gain(gm_bytes: bytes, meta: dict):
+def actual_log2_range(gm_bytes: bytes, meta: dict):
+    """Lowest and highest log2 gain (stops) that actually occur in the gain map pixels."""
     gain = np.asarray(Image.open(io.BytesIO(gm_bytes)))
     gmin = np.asarray(meta.get("GainMapMin", 0.0), dtype=np.float32)
     gmax = np.asarray(meta["GainMapMax"], dtype=np.float32)
     gamma = np.asarray(meta.get("Gamma", 1.0), dtype=np.float32)
-
     g = gain.astype(np.float32) / 255.0
-    log2_gain = gmin + (gmax - gmin) * g ** (1.0 / gamma)  # stops
-
-    lo, hi = float(log2_gain.min()), float(log2_gain.max())
-    scale = (log2_gain - lo) / (hi - lo) if hi > lo else np.zeros_like(log2_gain)
-    img = (scale * 255).round().astype(np.uint8)
-    return img, lo, hi, gain.shape
+    log2_gain = gmin + (gmax - gmin) * g ** (1.0 / gamma)
+    return float(log2_gain.min()), float(log2_gain.max())
 
 
 @app.get("/")
@@ -89,14 +86,18 @@ def upload():
         meta = read_hdrgm_metadata(gm_bytes)
         if "GainMapMax" not in meta:
             raise ValueError("Gain map is missing hdrgm:GainMapMax metadata.")
-        img, lo, hi, shape = render_log2_gain(gm_bytes, meta)
+        lo, hi = log2_range(meta)
+        actual_lo, actual_hi = actual_log2_range(gm_bytes, meta)
+        width, height = Image.open(io.BytesIO(gm_bytes)).size
     except Exception as e:
         return jsonify(error=str(e)), 422
     return jsonify(
-        gain_map=png_data_url(img),
+        gain_map="data:image/jpeg;base64," + base64.b64encode(gm_bytes).decode(),
         log2_min=lo,
         log2_max=hi,
-        gain_map_size=[shape[1], shape[0]],
+        actual_min=actual_lo,
+        actual_max=actual_hi,
+        gain_map_size=[width, height],
         meta=meta,
     )
 
